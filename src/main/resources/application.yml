@@ -4,8 +4,8 @@ spring:
 
   datasource:
     url: jdbc:postgresql://localhost:5432/mobility
-    username: ${DB_USER:postgres}         # FIX: was missing
-    password: ${DB_PASSWORD:postgres}     # FIX: was missing
+    username: ${DB_USER:sujalarya}         # FIX: was missing
+    password: ${DB_PASSWORD:Arya@bro27}     # FIX: was missing
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 20

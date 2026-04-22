@@ -12,6 +12,7 @@ import java.util.UUID;
 // domain/demand/DemandSignalRepository.java
 public interface DemandSignalRepository extends JpaRepository<DemandSignal, UUID> {
 
+    long countByStatus(DemandSignal.DemandStatus status);
     @Modifying
     @Query(value = """
         WITH expired AS (

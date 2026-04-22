@@ -12,31 +12,21 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
-// domain/demand/DemandAggregationScheduler.java
 @Component
 @RequiredArgsConstructor
 @Slf4j
 public class DemandAggregationScheduler {
 
-    private final CorridorRepository corridorRepository;
-    private final DemandAggregateRepository aggregateRepository;
+    private final CorridorRepository           corridorRepository;
+    private final DemandAggregateRepository    aggregateRepository;  // created below
     private final RedisTemplate<String, String> redisTemplate;
-    private final DemandWebSocketHandler webSocketHandler;
+    private final DemandWebSocketHandler        webSocketHandler;
 
-    /**
-     * Every 30 seconds:
-     *  1. Read all segment counters from Redis for every active corridor
-     *  2. Build a CorridorHeatmapResponse
-     *  3. Persist a DemandAggregate row to TimescaleDB (for analytics)
-     *  4. Write the full heatmap JSON to Redis (for driver app initial load)
-     *  5. Push the heatmap over WebSocket to all connected drivers
-     *
-     * ShedLock ensures only ONE instance runs this in a multi-pod deployment.
-     */
     @Scheduled(fixedDelay = 30_000, initialDelay = 10_000)
     @SchedulerLock(name = "demandAggregationJob", lockAtMostFor = "25s", lockAtLeastFor = "20s")
     public void aggregateAndBroadcast() {
@@ -49,7 +39,6 @@ public class DemandAggregationScheduler {
             try {
                 processCorridorAggregation(corridor, windowStart, windowEnd);
             } catch (Exception e) {
-                // One corridor failure should NOT stop other corridors
                 log.error("Aggregation failed for corridor={}", corridor.getCode(), e);
             }
         }
@@ -58,10 +47,12 @@ public class DemandAggregationScheduler {
     private void processCorridorAggregation(Corridor corridor,
                                             Instant windowStart,
                                             Instant windowEnd) {
-        String corridorCode    = corridor.getCode();
-        int    totalSegments   = corridor.getTotalSegments();
+        String corridorCode  = corridor.getCode();
+        int    totalSegments = corridor.getTotalSegments();
 
-        List<DemandAggregateResponse.SegmentDensity> segmentDensities = new ArrayList<>();
+        // FIX: was DemandAggregateResponse.SegmentDensity — that class doesn't exist.
+        // CorridorHeatmapResponse.SegmentDensity is the correct class.
+        List<CorridorHeatmapResponse.SegmentDensity> segmentDensities = new ArrayList<>();
         List<DemandAggregate> aggregatesToPersist = new ArrayList<>();
 
         for (int i = 0; i < totalSegments; i++) {
@@ -71,11 +62,10 @@ public class DemandAggregationScheduler {
             String countStr   = redisTemplate.opsForValue().get(countKey);
             String driversStr = redisTemplate.opsForValue().get(driversKey);
 
-            int demandCount  = countStr   != null ? Integer.parseInt(countStr)   : 0;
-            int driverCount  = driversStr != null ? Integer.parseInt(driversStr) : 0;
+            int demandCount = countStr   != null ? Integer.parseInt(countStr)   : 0;
+            int driverCount = driversStr != null ? Integer.parseInt(driversStr) : 0;
 
-            double ratio = driverCount == 0
-                    ? demandCount          // no driver → all demand is unserved
+            double ratio = driverCount == 0 ? demandCount
                     : (double) demandCount / driverCount;
 
             String densityLevel = classifyDensity(ratio);
@@ -88,7 +78,6 @@ public class DemandAggregationScheduler {
                     .densityLevel(densityLevel)
                     .build());
 
-            // Only persist non-zero windows to TimescaleDB — saves storage
             if (demandCount > 0 || driverCount > 0) {
                 aggregatesToPersist.add(DemandAggregate.builder()
                         .corridorId(corridor.getId())
@@ -101,12 +90,10 @@ public class DemandAggregationScheduler {
             }
         }
 
-        // Batch persist to TimescaleDB (single INSERT ... VALUES (...),(...))
         if (!aggregatesToPersist.isEmpty()) {
             aggregateRepository.saveAll(aggregatesToPersist);
         }
 
-        // Write full heatmap snapshot to Redis (for driver app cold start)
         CorridorHeatmapResponse heatmap = CorridorHeatmapResponse.builder()
                 .corridorId(corridor.getId())
                 .corridorCode(corridorCode)
@@ -115,29 +102,19 @@ public class DemandAggregationScheduler {
                 .build();
 
         String heatmapJson = toJson(heatmap);
+        // FIX: Duration import was missing
         redisTemplate.opsForValue().set(
                 "heatmap:" + corridorCode,
                 heatmapJson,
-                Duration.ofMinutes(2)  // stale if scheduler dies
+                Duration.ofMinutes(2)
         );
 
-        // Push over WebSocket to all drivers subscribed to this corridor
         webSocketHandler.pushCorridorHeatmap(corridorCode, heatmap);
 
         log.debug("Aggregated corridor={} segments={} persisted={}",
                 corridorCode, totalSegments, aggregatesToPersist.size());
     }
 
-    /**
-     * Demand density classification.
-     * These thresholds are tunable via config — do NOT hardcode in prod.
-     *
-     * ratio = demand_count / driver_count
-     *   < 1.0  → LOW     (more drivers than demand — drivers should spread out)
-     *   1-3    → MEDIUM  (healthy balance)
-     *   3-6    → HIGH    (drivers should move toward this segment)
-     *   > 6    → SURGE   (all nearby drivers should converge)
-     */
     private String classifyDensity(double ratio) {
         if (ratio < 1.0) return "LOW";
         if (ratio < 3.0) return "MEDIUM";
