@@ -1,11 +1,15 @@
 spring:
   application:
     name: mobility-platform
-
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
+  profiles:
+    active: default
   datasource:
     url: jdbc:postgresql://localhost:5432/mobility
-    username: ${DB_USER:postgres}         # FIX: was missing
-    password: ${DB_PASSWORD:postgres}     # FIX: was missing
+    username: ${DB_USER:sujalarya}         # FIX: was missing
+    password: ${DB_PASSWORD:Arya@bro27}     # FIX: was missing
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 20
@@ -44,24 +48,25 @@ spring:
           min-idle: 2
 
   kafka:
-    bootstrap-servers: ${KAFKA_SERVERS:localhost:9092}
-    consumer:
-      group-id: demand-service-group
-      auto-offset-reset: latest
-      enable-auto-commit: false
-      max-poll-records: 100
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
-      properties:
-        spring.json.trusted.packages: "com.mobility.*"
-    producer:
-      key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
-      acks: all
-      retries: 3
-    listener:
-      concurrency: 3
-      ack-mode: manual_immediate
+    enabled: false
+#    bootstrap-servers: ${KAFKA_SERVERS:localhost:9092}
+#    consumer:
+#      group-id: demand-service-group
+#      auto-offset-reset: latest
+#      enable-auto-commit: false
+#      max-poll-records: 100
+#      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+#      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+#      properties:
+#        spring.json.trusted.packages: "com.mobility.*"
+#    producer:
+#      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+#      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+#      acks: all
+#      retries: 3
+#    listener:
+#      concurrency: 3
+#      ack-mode: manual_immediate
 
 server:
   port: 8080
@@ -76,80 +81,3 @@ management:
       prometheus:
         enabled: true
 
-
-
-## application.yml — production tuning
-#spring:
-#  datasource:
-#    # Primary — writes only
-#    url: jdbc:postgresql://pg-primary:5432/mobility
-#    hikari:
-#      maximum-pool-size: 20         # 20 connections handles 500 writes/s easily
-#      minimum-idle: 5
-#      idle-timeout: 30000
-#      connection-timeout: 5000      # fail fast — don't queue behind slow queries
-#      max-lifetime: 1800000
-#      leak-detection-threshold: 10000
-#
-#  # Read replica — analytics queries only
-#  datasource-readonly:
-#    url: jdbc:postgresql://pg-replica:5432/mobility
-#    hikari:
-#      maximum-pool-size: 10
-#      read-only: true
-#
-#  jpa:
-#    hibernate:
-#      ddl-auto: validate             # NEVER auto-ddl in production
-#    properties:
-#      hibernate:
-#        jdbc:
-#          batch_size: 50             # batch INSERT for demand_aggregates
-#          order_inserts: true
-#          order_updates: true
-#        generate_statistics: false   # disable in prod — CPU cost
-#        default_batch_fetch_size: 50
-#
-#  # Redis cluster
-#  redis:
-#    cluster:
-#      nodes:
-#        - redis-node-1:6379
-#        - redis-node-2:6379
-#        - redis-node-3:6379
-#      max-redirects: 3
-#    lettuce:
-#      pool:
-#        max-active: 20
-#        max-idle: 10
-#        min-idle: 2
-#
-#  # Kafka
-#  kafka:
-#    bootstrap-servers: kafka-1:9092,kafka-2:9092,kafka-3:9092
-#    consumer:
-#      group-id: demand-service-group
-#      max-poll-records: 100          # batch consume up to 100 events per poll
-#      fetch-min-size: 1024
-#      fetch-max-wait: 500ms
-#    producer:
-#      batch-size: 16384
-#      linger-ms: 5                   # wait 5ms to batch small events
-#      compression-type: snappy       # compress — big win for JSON payloads
-#
-## ShedLock — uses same PG datasource
-#shedlock:
-#  defaults:
-#    lock-at-most-for: 25s
-#    lock-at-least-for: 20s
-#
-## Micrometer — expose metrics for Prometheus
-#management:
-#  endpoints:
-#    web:
-#      exposure:
-#        include: health,metrics,prometheus
-#  metrics:
-#    export:
-#      prometheus:
-#        enabled: true

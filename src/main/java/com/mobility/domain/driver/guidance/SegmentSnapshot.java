@@ -1,7 +1,8 @@
 package com.mobility.domain.driver.guidance;
+
 import lombok.*;
 
-@Getter @Builder
+@Getter @Builder @NoArgsConstructor @AllArgsConstructor
 public class SegmentSnapshot {
     private int index;
     private int demandCount;

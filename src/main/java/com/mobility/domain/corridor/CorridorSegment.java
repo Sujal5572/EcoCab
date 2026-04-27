@@ -22,6 +22,7 @@ public class CorridorSegment {
     @Column(name = "segment_end", columnDefinition = "geography(Point,4326)")
     private Point segmentEnd;
 
-    @Column(name = "length_km") private Double lengthKm;
+    @Column(name = "length_km", columnDefinition = "numeric(6,3)")
+    private Double lengthKm;
     @Column(name = "max_driver_capacity") private Integer maxDriverCapacity = 5;
 }

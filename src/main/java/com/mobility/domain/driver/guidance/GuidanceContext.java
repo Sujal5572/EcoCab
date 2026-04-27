@@ -1,9 +1,10 @@
 package com.mobility.domain.driver.guidance;
+
 import lombok.*;
 import java.util.List;
 import java.util.UUID;
 
-@Getter @Builder
+@Getter @Builder @NoArgsConstructor @AllArgsConstructor
 public class GuidanceContext {
     private UUID   driverId;
     private UUID   corridorId;

@@ -5,21 +5,21 @@ import com.mobility.infrastructure.kafka.events.DemandCreatedEvent;
 import com.mobility.infrastructure.kafka.events.DemandExpiredBatchEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Primary;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
-// infrastructure/kafka/DemandEventProducer.java
+// Real producer — active when spring.kafka.enabled=true (default when Kafka is reachable)
 @Component
+@Primary
 @RequiredArgsConstructor
 @Slf4j
+@ConditionalOnProperty(name = "spring.kafka.enabled", havingValue = "true")
 public class DemandEventProducer {
 
     private final KafkaTemplate<String, Object> kafkaTemplate;
 
-    /**
-     * Partition key = corridorCode — ensures all events for a corridor
-     * land on the same partition, preserving order within a corridor.
-     */
     public void publishDemandCreated(DemandCreatedEvent event) {
         send(KafkaConfig.TOPIC_DEMAND_CREATED, event.getCorridorCode(), event);
     }
@@ -37,8 +37,6 @@ public class DemandEventProducer {
                 .whenComplete((result, ex) -> {
                     if (ex != null) {
                         log.error("Failed to publish to topic={} key={}", topic, key, ex);
-                        // Non-fatal: Redis will still have partial state.
-                        // The 30s snapshot job will self-heal any counter drift.
                     } else {
                         log.debug("Published to topic={} partition={} offset={}",
                                 topic,

@@ -7,9 +7,11 @@ import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.config.TopicConfig;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.config.TopicBuilder;
 import org.springframework.kafka.core.*;
@@ -24,6 +26,7 @@ import java.util.Map;
 
 // infrastructure/kafka/KafkaConfig.java
 @Configuration
+@ConditionalOnProperty(name = "spring.kafka.enabled", havingValue = "true")
 public class KafkaConfig {
 
     public static final String TOPIC_DEMAND_CREATED   = "demand.created";
