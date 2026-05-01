@@ -3,22 +3,34 @@ package com.mobility.infrastructure.kafka;
 import com.mobility.infrastructure.kafka.events.DemandCancelledEvent;
 import com.mobility.infrastructure.kafka.events.DemandCreatedEvent;
 import com.mobility.infrastructure.kafka.events.DemandExpiredBatchEvent;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.context.annotation.Primary;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
-// Real producer — active when spring.kafka.enabled=true (default when Kafka is reachable)
+/**
+ * FIX: Removed @ConditionalOnProperty and @Primary.
+ *
+ * Root cause of the crash:
+ *   NoOpDemandEventProducer extends DemandEventProducer.
+ *   When spring.kafka.enabled=false, Spring skips creating DemandEventProducer.
+ *   NoOpDemandEventProducer then tries to extend a class that isn't a bean —
+ *   Spring still cannot satisfy the DemandEventProducer injection in UserService.
+ *
+ * Fix strategy:
+ *   DemandEventProducer is ALWAYS a bean.
+ *   KafkaTemplate is injected as Optional — if Kafka is disabled/unavailable,
+ *   the template is null and we log.debug instead of crashing.
+ *   This makes the producer safe with OR without Kafka running.
+ */
 @Component
-@Primary
-@RequiredArgsConstructor
 @Slf4j
-@ConditionalOnProperty(name = "spring.kafka.enabled", havingValue = "true")
 public class DemandEventProducer {
 
-    private final KafkaTemplate<String, Object> kafkaTemplate;
+    // @Autowired(required=false) — if KafkaTemplate bean doesn't exist
+    // (when KafkaAutoConfiguration is excluded), this is simply null.
+    @Autowired(required = false)
+    private KafkaTemplate<String, Object> kafkaTemplate;
 
     public void publishDemandCreated(DemandCreatedEvent event) {
         send(KafkaConfig.TOPIC_DEMAND_CREATED, event.getCorridorCode(), event);
@@ -33,6 +45,12 @@ public class DemandEventProducer {
     }
 
     private void send(String topic, String key, Object payload) {
+        if (kafkaTemplate == null) {
+            // Kafka not configured — log and skip. No crash.
+            log.debug("[NoOp] Kafka disabled. Would send to topic={} key={} payload={}",
+                    topic, key, payload.getClass().getSimpleName());
+            return;
+        }
         kafkaTemplate.send(topic, key, payload)
                 .whenComplete((result, ex) -> {
                     if (ex != null) {
