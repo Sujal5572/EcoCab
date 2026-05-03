@@ -1,5 +1,6 @@
 package com.mobility.domain.corridor;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 import org.locationtech.jts.geom.Point;
@@ -13,13 +14,16 @@ public class CorridorSegment {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "corridor_id", nullable = false)
+    @JsonIgnore
     private Corridor corridor;
 
     @Column(name = "segment_index", nullable = false) private Integer segmentIndex;
 
     @Column(name = "segment_start", columnDefinition = "geography(Point,4326)")
+    @JsonIgnore
     private Point segmentStart;
     @Column(name = "segment_end", columnDefinition = "geography(Point,4326)")
+    @JsonIgnore
     private Point segmentEnd;
 
     @Column(name = "length_km", columnDefinition = "numeric(6,3)")
