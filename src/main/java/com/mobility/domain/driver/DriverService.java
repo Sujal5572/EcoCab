@@ -1,16 +1,18 @@
 package com.mobility.domain.driver;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mobility.common.EntityNotFoundException;
 import com.mobility.domain.corridor.Corridor;
 import com.mobility.domain.corridor.CorridorRepository;
 import com.mobility.domain.corridor.CorridorSegment;
+import com.mobility.domain.corridor.CorridorService;
 import com.mobility.domain.driver.dto.*;
 import com.mobility.domain.driver.guidance.*;
 import com.mobility.domain.trip.Trip;
 import com.mobility.domain.trip.TripRepository;
 import jakarta.persistence.QueryTimeoutException;
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.RedisCallback;
@@ -34,6 +36,8 @@ public class DriverService {
     private final TripRepository                tripRepository;
     private final RedisTemplate<String, String> redisTemplate;
     private final GuidanceEngine                guidanceEngine;
+    private final ObjectMapper objectMapper;
+    private final CorridorService corridorService;
 
     private static final Duration DRIVER_LOC_TTL    = Duration.ofSeconds(90);
     private static final Duration SEGMENT_SCORE_TTL  = Duration.ofSeconds(90);
@@ -127,25 +131,59 @@ public class DriverService {
     }
 
     // ── getCorridorHeatmap ────────────────────────────────────────
+    @Transactional(readOnly = true)
     public CorridorHeatmapResponse getCorridorHeatmap(UUID driverId) {
         Driver driver = driverRepository.findById(driverId)
                 .orElseThrow(() -> new EntityNotFoundException("Driver", driverId));
+
         Corridor corridor = driver.getCurrentCorridor();
+
         if (corridor == null) {
             return CorridorHeatmapResponse.builder()
-                    .corridorId(null).corridorCode("NONE").totalSegments(0)
-                    .segments(List.of()).build();
+                    .corridorId(null)
+                    .corridorCode("NONE")
+                    .corridorName("No Corridor") // ✅ ADD
+                    .totalSegments(0)
+                    .segments(List.of())
+                    .build();
         }
-        String json = redisTemplate.opsForValue().get("heatmap:" + corridor.getCode());
-        // If no cached heatmap yet, return empty — scheduler will populate within 30s
+
+        String cacheKey = "heatmap:" + corridor.getCode();
+        String json = redisTemplate.opsForValue().get(cacheKey);
+
+        // ✅ 1. Try Redis first
+        if (json != null) {
+            try {
+                CorridorHeatmapResponse response =
+                        objectMapper.readValue(json, CorridorHeatmapResponse.class);
+
+                // ✅ IMPORTANT: enrich response (Redis won't have name)
+                return CorridorHeatmapResponse.builder()
+                        .corridorId(response.getCorridorId())
+                        .corridorCode(response.getCorridorCode())
+                        .corridorName(corridor.getName()) // ⭐ ADD HERE
+                        .totalSegments(response.getTotalSegments())
+                        .segments(response.getSegments())
+                        .build();
+
+            } catch (Exception e) {
+                log.warn("Invalid heatmap JSON for {}", corridor.getCode());
+            }
+        }
+
+        // ✅ 2. Fallback → build live
+        CorridorHeatmapResponse response =
+                corridorService.getLiveDemand(corridor.getId());
+
+        // ✅ ALSO enrich fallback
         return CorridorHeatmapResponse.builder()
-                .corridorId(corridor.getId())
-                .corridorCode(corridor.getCode())
-                .totalSegments(corridor.getTotalSegments())
-                .segments(List.of())
+                .corridorId(response.getCorridorId())
+                .corridorCode(response.getCorridorCode())
+                .corridorName(corridor.getName())
+                .totalSegments(response.getTotalSegments())
+                .segments(response.getSegments())
                 .build();
     }
-
     // ── startTrip ─────────────────────────────────────────────────
     public TripResponse startTrip(UUID driverId) {
         Driver driver = driverRepository.findById(driverId)

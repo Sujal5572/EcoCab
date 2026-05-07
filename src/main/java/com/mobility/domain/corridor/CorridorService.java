@@ -37,24 +37,63 @@ public class CorridorService {
      * 1. Try Redis cache key "heatmap:{code}" — written by DemandAggregationScheduler every 30s
      * 2. If cache miss, build it live from individual Redis counter keys
      */
+//    public CorridorHeatmapResponse getLiveDemand(UUID id) {
+//        Corridor corridor = corridorRepository.findByIdWithSegments(id)
+//                .orElseThrow(() -> new RuntimeException("Corridor not found: " + id));
+//
+//        String cacheKey = "heatmap:" + corridor.getCode();
+//
+//        // Try cached heatmap first (scheduler writes this every 30s)
+//        String cached = redisTemplate.opsForValue().get(cacheKey);
+//        if (cached != null) {
+//            try {
+//                return objectMapper.readValue(cached, CorridorHeatmapResponse.class);
+//            } catch (Exception e) {
+//                log.warn("Failed to parse cached heatmap for {}, rebuilding live", corridor.getCode());
+//            }
+//        }
+//
+//        // Cache miss — build live from Redis counter keys
+//        return buildLiveHeatmap(corridor);
+//    }
     public CorridorHeatmapResponse getLiveDemand(UUID id) {
         Corridor corridor = corridorRepository.findByIdWithSegments(id)
                 .orElseThrow(() -> new RuntimeException("Corridor not found: " + id));
 
         String cacheKey = "heatmap:" + corridor.getCode();
 
-        // Try cached heatmap first (scheduler writes this every 30s)
+        // ✅ 1. Try cached heatmap
         String cached = redisTemplate.opsForValue().get(cacheKey);
         if (cached != null) {
             try {
-                return objectMapper.readValue(cached, CorridorHeatmapResponse.class);
+                CorridorHeatmapResponse response =
+                        objectMapper.readValue(cached, CorridorHeatmapResponse.class);
+
+                // ⭐ ENRICH RESPONSE
+                return CorridorHeatmapResponse.builder()
+                        .corridorId(response.getCorridorId())
+                        .corridorCode(response.getCorridorCode())
+                        .corridorName(corridor.getName()) // ✅ ADD
+                        .totalSegments(response.getTotalSegments())
+                        .segments(response.getSegments())
+                        .build();
+
             } catch (Exception e) {
                 log.warn("Failed to parse cached heatmap for {}, rebuilding live", corridor.getCode());
             }
         }
 
-        // Cache miss — build live from Redis counter keys
-        return buildLiveHeatmap(corridor);
+        // ✅ 2. Cache miss → build live
+        CorridorHeatmapResponse response = buildLiveHeatmap(corridor);
+
+        // ⭐ ENRICH HERE ALSO
+        return CorridorHeatmapResponse.builder()
+                .corridorId(response.getCorridorId())
+                .corridorCode(response.getCorridorCode())
+                .corridorName(corridor.getName()) // ✅ ADD
+                .totalSegments(response.getTotalSegments())
+                .segments(response.getSegments())
+                .build();
     }
 
     private CorridorHeatmapResponse buildLiveHeatmap(Corridor corridor) {

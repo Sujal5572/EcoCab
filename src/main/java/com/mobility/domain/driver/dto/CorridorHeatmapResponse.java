@@ -15,6 +15,7 @@ import java.util.UUID;
 public class CorridorHeatmapResponse {
     private UUID   corridorId;
     private String corridorCode;
+    private String corridorName;
     private int    totalSegments;
     private List<SegmentDensity> segments;
 
