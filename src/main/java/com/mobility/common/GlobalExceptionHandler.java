@@ -44,5 +44,13 @@ public class GlobalExceptionHandler {
         log.error("Unhandled exception", ex);
         return ApiResponse.error("An unexpected error occurred");
     }
+    @ExceptionHandler(org.springframework.web.servlet.resource.NoResourceFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ApiResponse<?> handleNoResource(
+            org.springframework.web.servlet.resource.NoResourceFoundException ex) {
+
+        // DO NOT log as error → this is normal browser behavior
+        return ApiResponse.error("Resource not found");
+    }
 }
 

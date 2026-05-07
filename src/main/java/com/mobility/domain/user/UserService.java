@@ -96,11 +96,20 @@ public class UserService {
                 .segmentIndex(segmentIndex)
                 .userId(userId)
                 .build());
+//
+//        String redisKey = "demand:" + corridor.getCode()
+//                + ":seg:" + segmentIndex + ":count";
+//        String countStr = redisTemplate.opsForValue().get(redisKey);
+//        int currentDemandCount = countStr != null ? Integer.parseInt(countStr) : 0;
 
         String redisKey = "demand:" + corridor.getCode()
                 + ":seg:" + segmentIndex + ":count";
-        String countStr = redisTemplate.opsForValue().get(redisKey);
-        int currentDemandCount = countStr != null ? Integer.parseInt(countStr) : 0;
+
+// 🔥 increment immediately (fast + correct UX)
+        Long updatedCount = redisTemplate.opsForValue().increment(redisKey);
+
+// fallback safety
+        int currentDemandCount = updatedCount != null ? updatedCount.intValue() : 0;
 
         return DemandSignalResponse.builder()
                 .signalId(saved.getId())
@@ -123,6 +132,10 @@ public class UserService {
         if (signal.getStatus() != DemandSignal.DemandStatus.ACTIVE) {
             throw new BusinessException("Signal is not active");
         }
+        String redisKey = "demand:" + signal.getCorridor().getCode()
+                + ":seg:" + signal.getSegmentIndex() + ":count";
+
+        redisTemplate.opsForValue().decrement(redisKey);
 
         signal.setStatus(DemandSignal.DemandStatus.CANCELLED);
         demandSignalRepository.save(signal);

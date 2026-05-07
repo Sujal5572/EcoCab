@@ -35,6 +35,7 @@ public class CorridorController {
 
     @GetMapping("/{id}/demand")
     public ApiResponse<CorridorHeatmapResponse> getLiveDemand(@PathVariable UUID id) {
+        System.out.println("UUUID IS" +  id);
         return ApiResponse.ok(corridorService.getLiveDemand(id));
     }
 }
